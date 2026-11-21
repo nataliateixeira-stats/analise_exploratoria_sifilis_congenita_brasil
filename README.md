@@ -2,7 +2,7 @@
 
 Projeto final da disciplina **Programação e Análise de Dados** (Prof. Lucas Miguel de Carvalho).
 
-**Grupo:** [nome do grupo e integrantes]
+**Grupo:** Natália Teixeira Pinto
 
 ## Descrição
 
