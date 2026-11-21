@@ -12,8 +12,8 @@
 #     é versionada no GitHub; veja o .gitignore).
 #   - Rode o script a partir da pasta do projeto.
 # ============================================================
-devtools::install_github("danicat/read.dbc")
-pak::pak("danicat/read.dbc")
+# devtools::install_github("danicat/read.dbc")
+# pak::pak("danicat/read.dbc")
 library(read.dbc)   # leitura de arquivos .dbc do DATASUS
 library(dplyr)      # manipulação de dados
 library(stringi)    # padronização de texto/codificação
