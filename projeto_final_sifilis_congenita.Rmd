@@ -1,0 +1,878 @@
+---
+title: "Sífilis congênita: perfil das notificações, tendência do pré-natal e letalidade"
+subtitle: "Projeto final — Programação e Análise de Dados (Prof. Lucas Miguel de Carvalho)"
+author: "Natália Teixei"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+lang: pt-BR
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    code_folding: show
+    df_print: paged
+    theme: flatly
+    highlight: tango
+---
+
+```{css, echo=FALSE}
+body { font-size: 16px; text-align: justify; }
+h1, h2, h3 { text-align: left; }
+
+/* Caixa para as interpretações do(a) aluno(a) */
+.interpretacao {
+  border-left: 5px solid #0072B2; background: #F3F8FC;
+  padding: 10px 18px; margin: 16px 0;
+}
+.interpretacao::before {
+  content: "Interpretação"; display: block;
+  font-weight: bold; color: #0072B2; margin-bottom: 4px;
+}
+
+/* Caixa explicativa: o que fazemos e por quê */
+.passo {
+  border-left: 5px solid #E69F00; background: #FFF9EC;
+  padding: 8px 18px; margin: 14px 0;
+}
+
+/* Tabelas do table1 no estilo de TCC/tese */
+table.Rtable1 {
+  font-family: "Times New Roman", Times, serif; font-size: 14px;
+  border-top: 2px solid #000 !important; border-bottom: 2px solid #000 !important;
+}
+table.Rtable1 thead th { background: #fff !important; border-bottom: 1px solid #000 !important; }
+table.Rtable1 td, table.Rtable1 th { border-left: none !important; border-right: none !important; }
+table.Rtable1 tbody tr:nth-child(even) td { background: #fff !important; }
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, warning = FALSE, message = FALSE,
+  fig.align = "center", fig.width = 9, fig.height = 5.5,
+  dpi = 150, out.width = "100%"
+)
+```
+
+# Tema, objetivo e dataset
+
+## Tema e relevância
+
+A sífilis congênita é a infecção do bebê pela bactéria *Treponema pallidum*, transmitida pela mãe durante a gestação. É um agravo de notificação compulsória e evitável: a prevenção depende do **diagnóstico e do tratamento da gestante e do parceiro durante o pré-natal**. Por isso, acompanhar o perfil das mães, o acesso ao pré-natal e o desfecho dos casos é um indicador importante de saúde pública.
+
+## Objetivo e perguntas
+
+**Objetivo geral:** aplicar os conhecimentos de programação, manipulação de dados, visualização gráfica e análise exploratória desenvolvidos na disciplina para investigar um conjunto de dados da área da saúde, neste caso as notificações de sífilis congênita no Brasil (SINAN, 2013–2023).
+
+**Objetivos específicos:**
+
+- carregar, avaliar a qualidade e preparar os dados (tipos, ausentes, duplicatas, valores inconsistentes, recodificação e padronização);
+- caracterizar o perfil das mães e dos casos com estatística descritiva;
+- visualizar distribuições, tendências e diferenças entre grupos com gráficos apropriados a cada tipo de variável;
+- desenvolver funções próprias que organizem e automatizem as análises;
+- responder, de forma exploratória, a duas perguntas de investigação:
+
+1. **Análise 1 (tendência):** a proporção de mães com pré-natal realizado, entre os casos notificados, mudou de 2013 a 2023?
+2. **Análise 2 (comparação entre grupos):** a letalidade (proporção de óbitos por sífilis congênita) é diferente conforme o pré-natal, o tratamento do parceiro, a escolaridade, a raça/cor, a faixa etária da mãe e a região?
+
+## Dataset: origem, descrição e justificativa
+
+Os dados são notificações de sífilis congênita do **SINAN** (Sistema de Informação de Agravos de Notificação, Ministério da Saúde), de 2013 a 2023, com uma linha por notificação. Foram usados os **arquivos anuais de sífilis congênita** (`SIFCBR13` a `SIFCBR23`, formato `.dbc`), disponibilizados pelo DATASUS/SINAN (<http://tabnet.datasus.gov.br/cgi/tabcgi.exe?sinannet/cnv/sifilisbr.def>), lidos no R com o pacote `read.dbc` e reunidos em uma única base (script `00_baixar_e_preparar_dados.R`). A base é **pública e sem identificação direta de pessoas**. No repositório do GitHub incluímos **apenas o arquivo reduzido `dados_sifilis_selecionados.csv`**, com as 8 variáveis analisadas e **sem datas, município ou outros campos que possam identificar casos**. Ela foi escolhida porque tem o desfecho do caso (evolução) e variáveis do cuidado materno (pré-natal, tratamento do parceiro) que permitem responder às perguntas acima.
+
+
+# Variáveis de interesse e dicionário de dados
+
+::: {.passo}
+A base reunida a partir dos arquivos do SINAN tem 65 colunas. Selecionamos **apenas 8**, as necessárias para as duas perguntas. O objeto `mapa` liga o nome padronizado usado no relatório ao nome da coluna no CSV.
+:::
+
+```{r mapa-variaveis}
+arquivo <- "dados_sifilis_selecionados.csv"
+
+# nome padronizado = coluna do arquivo de dados (nomes dos campos do SINAN)
+mapa <- c(
+  ano              = "nu_ano",      # ano da notificação
+  uf               = "sg_uf",       # UF de residência (código IBGE de 2 dígitos)
+  idade_mae        = "ant_idade",   # idade da mãe, em anos
+  raca_mae         = "ant_raca",    # raça/cor da mãe
+  escolaridade_mae = "escolmae",    # escolaridade da mãe
+  prenatal         = "ant_pre_na",  # realizou pré-natal?
+  trat_parceiro    = "ant_tratad",  # parceiro tratado concomitantemente?
+  desfecho         = "evolucao"     # evolução do caso
+)
+```
+
+```{r quadro-variaveis, echo=FALSE}
+quadro <- data.frame(
+  Variável = names(mapa),
+  `Coluna no CSV` = unname(mapa),
+  Tipo = c("Numérica discreta", "Categórica nominal", "Numérica contínua",
+           "Categórica nominal", "Categórica ordinal", "Categórica binária",
+           "Categórica binária", "Categórica nominal"),
+  `Descrição e códigos` = c(
+    "Ano da notificação (2013 a 2023)",
+    "UF de residência; usada para derivar a região",
+    "Idade da mãe, em anos",
+    "1 Branca; 2 Preta; 3 Amarela; 4 Parda; 5 Indígena; 9 Ignorado",
+    "00 Analfabeta; 01–04 Fundamental; 05–06 Médio; 07–08 Superior; 09 Ignorado; 10 Não se aplica",
+    "1 Sim; 2 Não; 9 Ignorado",
+    "1 Sim; 2 Não; 9 Ignorado",
+    "1 Vivo; 2 Óbito por sífilis congênita; 3 Óbito por outra causa; 4 Aborto; 5 Natimorto; 9 Ignorado"),
+  check.names = FALSE
+)
+knitr::kable(quadro, format = "html", row.names = FALSE,
+             caption = "Quadro 1 – Dicionário das variáveis de interesse.") |>
+  kableExtra::kable_styling(bootstrap_options = c("striped", "condensed"),
+                            full_width = FALSE)
+```
+
+
+# Etapa 1 — Carregamento de bibliotecas e dados
+
+## Bibliotecas e suas finalidades
+
+```{r pacotes}
+# install.packages(c("readr", "dplyr", "tidyr", "ggplot2", "scales",
+#                    "table1", "knitr", "kableExtra"))   # rodar uma vez
+library(readr)       # leitura rápida de CSV
+library(dplyr)       # filtrar, agrupar, resumir e criar variáveis
+library(tidyr)       # reorganizar dados para gráficos em painéis
+library(ggplot2)     # gráficos
+library(scales)      # formatação de eixos e rótulos
+library(table1)      # tabelas descritivas (Tabela 1) para teses e artigos
+library(knitr)       # tabelas no relatório
+library(kableExtra)  # estilo das tabelas
+```
+
+Escolhemos o **readr** por ler só as colunas pedidas (a base é grande), o **dplyr/tidyr** pela sintaxe encadeada e legível, o **ggplot2** por permitir gráficos reprodutíveis e personalizáveis, e o **table1** por gerar tabelas no formato de artigo científico.
+
+```{r auxiliares}
+# Formatação dos dados
+tabela <- function(df, legenda = NULL) {
+  kbl(df, caption = legenda, align = "l", row.names = FALSE) |>
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                  full_width = FALSE, position = "center")
+}
+fnum  <- function(x, d = 1) format(round(x, d), nsmall = d, decimal.mark = ",",
+                                   big.mark = ".", trim = TRUE)
+fmt_n <- function(x) format(x, big.mark = ".", decimal.mark = ",",
+                            trim = TRUE, scientific = FALSE)
+```
+
+## Leitura e verificação
+
+::: {.passo}
+Lemos só as colunas do `mapa` e **todas como texto**: os códigos (1, 2, 9...) são categorias, não números.
+:::
+
+```{r leitura}
+cols_csv <- names(read_csv(arquivo, n_max = 0, show_col_types = FALSE))
+faltando <- setdiff(unname(mapa), cols_csv)
+if (length(faltando) > 0) {
+  stop("Coluna(s) não encontrada(s) em '", arquivo, "': ",
+       paste(faltando, collapse = ", "), ". Ajuste o objeto 'mapa'.")
+}
+
+dados_bruto <- read_csv(
+  arquivo,
+  col_select = all_of(unname(mapa)),
+  col_types  = cols(.default = col_character()),
+  na         = c("", "NA", "N/A", "NULL"),
+  show_col_types = FALSE
+) |>
+  rename(all_of(mapa))
+```
+
+```{r dimensao}
+tabela(
+  data.frame(
+    Item  = c("Linhas (notificações)", "Colunas (variáveis de interesse)"),
+    Valor = c(fmt_n(nrow(dados_bruto)), ncol(dados_bruto))
+  ),
+  "Dimensão do dataset"
+)
+```
+
+```{r amostra}
+tabela(head(dados_bruto, 6), "Primeiras observações (valores originais)")
+```
+
+Nomes das variáveis analisadas: `r paste(names(dados_bruto), collapse = ", ")`.
+
+# Etapa 2 — Avaliação, manipulação e preparação dos dados
+
+## Tipos de variáveis e valores existentes
+
+::: {.passo}
+Antes de transformar, olhamos **quais valores existem** em cada variável. Isso mostra quais códigos precisam de recodificação (como o 9 = ignorado) e quais valores podem ser inválidos.
+:::
+
+```{r tipos-valores}
+tabela(
+  data.frame(
+    variavel    = names(dados_bruto),
+    n_distintos = sapply(dados_bruto, n_distinct),
+    valores_mais_frequentes = sapply(dados_bruto, function(x) {
+      tb <- sort(table(x, useNA = "no"), decreasing = TRUE)
+      paste(head(names(tb), 12), collapse = " | ")
+    }),
+    row.names = NULL
+  ),
+  "Valores distintos por variável (texto original)"
+)
+```
+
+## Valores ausentes e duplicatas
+
+```{r ausentes-bruto}
+aus_bruto <- data.frame(
+  variavel     = names(dados_bruto),
+  n_ausentes   = colSums(is.na(dados_bruto)),
+  pct_ausentes = round(100 * colMeans(is.na(dados_bruto)), 2),
+  row.names    = NULL
+)
+tabela(aus_bruto[order(-aus_bruto$pct_ausentes), ],
+       "Valores ausentes por variável (células vazias)")
+n_dup <- sum(duplicated(dados_bruto))
+```
+
+Há **`r fmt_n(n_dup)`** linhas idênticas nas 8 colunas analisadas. Como a base reduzida **não tem identificador** da notificação, linhas iguais podem ser casos diferentes com o mesmo perfil, algo esperado com poucas variáveis categóricas. Por isso, **não removemos duplicatas**.
+
+Os códigos "ignorado" (9) não são células vazias, e serão tratados na recodificação.
+
+## Conversão de tipos e valores inconsistentes
+
+::: {.passo}
+Convertemos `ano` e `idade_mae` para número. Idades fora de 10 a 60 anos (por exemplo, 999, que costuma ser código de "desconhecido") são **inválidas** e viram ausentes; informamos quantas.
+:::
+
+```{r conversao}
+idade_min <- 10
+idade_max <- 60
+
+dados <- dados_bruto |>
+  mutate(ano = suppressWarnings(as.integer(ano)),
+         idade_mae = suppressWarnings(as.numeric(idade_mae)))
+
+n_idade_fora <- sum(dados$idade_mae < idade_min | dados$idade_mae > idade_max,
+                    na.rm = TRUE)
+
+dados <- dados |>
+  mutate(idade_mae = ifelse(idade_mae < idade_min | idade_mae > idade_max,
+                            NA, idade_mae))
+
+tabela(
+  data.frame(
+    Verificação = c(paste0("Idade da mãe fora de ", idade_min, "–", idade_max,
+                           " anos (transformada em ausente)"),
+                    "Menor ano", "Maior ano"),
+    Resultado = c(fmt_n(n_idade_fora), min(dados$ano, na.rm = TRUE),
+                  max(dados$ano, na.rm = TRUE))
+  ),
+  "Verificação de valores inconsistentes"
+)
+```
+
+## Recodificação das variáveis categóricas
+
+::: {.passo}
+Trocamos os códigos por **rótulos legíveis** (fatores). Códigos que não estão na lista (9 = ignorado; escolaridade 10 = não se aplica) viram ausentes (`NA`). Na tabela descritiva eles reaparecem como a categoria "Ignorado/ausente", para que o leitor veja a proporção de preenchimento.
+:::
+
+```{r recodificacao}
+rotulos <- list(
+  prenatal      = c("1" = "Sim", "2" = "Não"),
+  trat_parceiro = c("1" = "Sim", "2" = "Não"),
+  raca_mae      = c("1" = "Branca", "2" = "Preta", "3" = "Amarela",
+                    "4" = "Parda", "5" = "Indígena"),
+  escolaridade_mae = c("0" = "Analfabeta",
+                       "1" = "Fundamental incompleto (até 4ª série)",
+                       "2" = "Fundamental incompleto (até 4ª série)",
+                       "3" = "Fundamental incompleto (5ª a 8ª série)",
+                       "4" = "Fundamental completo",
+                       "5" = "Médio incompleto",
+                       "6" = "Médio completo",
+                       "7" = "Superior",
+                       "8" = "Superior")
+)
+
+# Normaliza códigos como "01" -> "1"
+norm_cod <- function(x) sub("^0+(?=.)", "", trimws(as.character(x)), perl = TRUE)
+
+for (v in names(rotulos)) {
+  dados[[v]] <- factor(norm_cod(dados[[v]]),
+                       levels = names(rotulos[[v]]),
+                       labels = unname(rotulos[[v]]))
+}
+```
+
+## Criação de variáveis derivadas
+
+::: {.passo}
+Criamos variáveis novas, cada uma com uma finalidade:
+
+- `obito` (0/1): **óbito por sífilis congênita (1) versus vivo (0)**. Óbito por outra causa, aborto, natimorto e ignorado (códigos 3, 4, 5 e 9) ficam ausentes e **não entram na análise do desfecho**, pois não respondem à pergunta (óbito pelo agravo entre os nascidos vivos).
+- `prenatal_bin` (0/1): pré-natal realizado, usada na Análise 1.
+- `regiao`: região do Brasil derivada da UF (menos categorias e mais casos por grupo).
+- `faixa_etaria`: idade da mãe em faixas.
+:::
+
+```{r derivadas}
+cod_obito <- "2"
+cod_vivo  <- "1"
+
+uf_ibge <- c("11"="Norte", "12"="Norte", "13"="Norte", "14"="Norte", "15"="Norte",
+             "16"="Norte", "17"="Norte", "21"="Nordeste", "22"="Nordeste",
+             "23"="Nordeste", "24"="Nordeste", "25"="Nordeste", "26"="Nordeste",
+             "27"="Nordeste", "28"="Nordeste", "29"="Nordeste", "31"="Sudeste",
+             "32"="Sudeste", "33"="Sudeste", "35"="Sudeste", "41"="Sul",
+             "42"="Sul", "43"="Sul", "50"="Centro-Oeste", "51"="Centro-Oeste",
+             "52"="Centro-Oeste", "53"="Centro-Oeste")
+
+dados <- dados |>
+  mutate(
+    desfecho_cod = norm_cod(desfecho),
+    obito = case_when(desfecho_cod %in% cod_obito ~ 1L,
+                      desfecho_cod %in% cod_vivo  ~ 0L,
+                      TRUE ~ NA_integer_),
+    desfecho = factor(obito, levels = c(0, 1),
+                      labels = c("Vivo", "Óbito por sífilis congênita")),
+    prenatal_bin = as.integer(prenatal == "Sim"),
+    regiao = factor(unname(uf_ibge[trimws(as.character(uf))]),
+                    levels = c("Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul")),
+    faixa_etaria = cut(idade_mae, breaks = c(0, 20, 25, 30, 35, Inf), right = FALSE,
+                       labels = c("< 20", "20–24", "25–29", "30–34", "≥ 35"))
+  )
+
+# Como cada código de evolução foi tratado
+evol_nome <- c("1" = "Vivo", "2" = "Óbito por sífilis congênita",
+               "3" = "Óbito por outra causa", "4" = "Aborto",
+               "5" = "Natimorto", "9" = "Ignorado")
+dados |>
+  count(codigo = desfecho_cod, name = "n") |>
+  mutate(Significado = unname(evol_nome[codigo]),
+         `Usado no desfecho` = ifelse(codigo %in% c(cod_obito, cod_vivo), "Sim", "Não"),
+         `%` = fnum(100 * n / sum(n), 1), n = fmt_n(n)) |>
+  select(Código = codigo, Significado, n, `%`, `Usado no desfecho`) |>
+  tabela("Classificação do desfecho (campo `evolucao`)")
+```
+
+## Padronização (escore Z)
+
+A **padronização por escore Z** transforma a idade em `(idade − média) / desvio-padrão` (média 0, desvio-padrão 1). Ela é útil para comparar variáveis em escalas diferentes. Aqui é feita como **demonstração da técnica** (as análises deste relatório são descritivas e não dependem da escala).
+
+```{r padronizacao}
+dados <- dados |> mutate(idade_z = as.numeric(scale(idade_mae)))
+
+tabela(
+  data.frame(
+    Variável = c("idade_mae (anos)", "idade_z (escore Z)"),
+    Média = c(fnum(mean(dados$idade_mae, na.rm = TRUE), 2),
+              fnum(mean(dados$idade_z, na.rm = TRUE), 2)),
+    `Desvio-padrão` = c(fnum(sd(dados$idade_mae, na.rm = TRUE), 2),
+                        fnum(sd(dados$idade_z, na.rm = TRUE), 2)),
+    check.names = FALSE
+  ),
+  "Idade da mãe antes e depois da padronização"
+)
+```
+
+## Estatísticas descritivas
+
+::: {.passo}
+A **Tabela 1** resume a amostra no formato usado em teses e artigos: variáveis numéricas por média (DP) e mediana [Q1; Q3]; categóricas por n (%). Os valores ignorados aparecem como categoria **"Ignorado/ausente"**, e a tabela é apresentada para toda a amostra e segundo o desfecho. Registros com outro desfecho (óbito por outra causa, aborto, natimorto, ignorado) não entram nas colunas por desfecho.
+:::
+
+```{r preparar-tabela1}
+explicitar_na <- function(f) {
+  lv <- c(levels(f), "Ignorado/ausente")
+  f <- as.character(f)
+  f[is.na(f)] <- "Ignorado/ausente"
+  droplevels(factor(f, levels = lv))
+}
+
+# Versão com "ignorado" como categoria (usada na tabela e na Análise 2)
+dados_cat <- dados |>
+  mutate(across(c(faixa_etaria, raca_mae, escolaridade_mae, regiao,
+                  prenatal, trat_parceiro), explicitar_na))
+
+dados_t1 <- dados_cat |> filter(!is.na(desfecho))
+
+label(dados_t1$idade_mae)        <- "Idade da mãe (anos)"
+label(dados_t1$faixa_etaria)     <- "Faixa etária da mãe (anos)"
+label(dados_t1$raca_mae)         <- "Raça/cor da mãe"
+label(dados_t1$escolaridade_mae) <- "Escolaridade da mãe"
+label(dados_t1$regiao)           <- "Região"
+label(dados_t1$prenatal)         <- "Pré-natal realizado"
+label(dados_t1$trat_parceiro)    <- "Parceiro tratado"
+
+render_cont <- function(x) {
+  x <- x[!is.na(x)]
+  c("",
+    "Média (DP)"       = paste0(fnum(mean(x)), " (", fnum(sd(x)), ")"),
+    "Mediana [Q1; Q3]" = paste0(fnum(median(x)), " [", fnum(quantile(x, 0.25)),
+                                "; ", fnum(quantile(x, 0.75)), "]"))
+}
+render_cat <- function(x) {
+  tb <- table(x)
+  c("", setNames(paste0(fmt_n(as.integer(tb)), " (",
+                        fnum(100 * as.numeric(tb) / sum(tb)), "%)"), names(tb)))
+}
+```
+
+```{r tabela1}
+table1(
+  ~ idade_mae + faixa_etaria + raca_mae + escolaridade_mae + regiao +
+    prenatal + trat_parceiro | desfecho,
+  data = dados_t1, overall = "Total",
+  render.continuous = render_cont, render.categorical = render_cat,
+  render.missing = NULL,
+  caption  = "Tabela 1 – Características das mães e dos casos de sífilis congênita, segundo o desfecho.",
+  footnote = "Fonte: SINAN, Ministério da Saúde. Elaboração própria. DP: desvio-padrão; Q1/Q3: quartis."
+)
+```
+
+## Valores ausentes depois da preparação
+
+```{r ausentes-depois}
+vars_interesse <- c("ano", "regiao", "idade_mae", "raca_mae", "escolaridade_mae",
+                    "prenatal", "trat_parceiro", "desfecho")
+aus_depois <- data.frame(
+  variavel     = vars_interesse,
+  n_ausentes   = colSums(is.na(dados[, vars_interesse])),
+  pct_ausentes = round(100 * colMeans(is.na(dados[, vars_interesse])), 2),
+  row.names    = NULL
+)
+aus_depois <- aus_depois[order(-aus_depois$pct_ausentes), ]
+tabela(aus_depois, "Valores ausentes ou ignorados por variável (depois da recodificação)")
+```
+
+::: {.interpretacao}
+Entre os 223.562 casos com desfecho vivo ou óbito por sífilis congênita, as mães eram jovens: idade média de 24,4 anos (mediana de 23, com metade entre 20 e 28 anos), e 22,4% tinham menos de 20 anos. A maioria era parda (58,2%) ou branca (23,8%); a escolaridade mais frequente foi o ensino fundamental incompleto (5ª a 8ª série, 21,3%), e só 2,0% tinham ensino superior. Os casos se concentraram no Sudeste (43,5%) e no Nordeste (29,0%). Cerca de 84% das mães fizeram pré-natal, mas apenas 18,9% dos parceiros foram tratados. Comparando as colunas, as mães dos casos que evoluíram para óbito eram mais jovens (31,3% com menos de 20 anos, contra 22,8% entre os vivos), fizeram menos pré-natal (63,0% contra 84,4%) e tiveram menos parceiros tratados (11,4% contra 19,0%). Raça/cor e região foram parecidas entre os grupos. 
+
+As variáveis com mais informação ignorada ou ausente são a escolaridade da mãe (29,4% das notificações) e o tratamento do parceiro (27,1%), seguidas de raça/cor (8,8%), pré-natal (5,5%) e idade (2,5%, incluindo idades inválidas); ano e região não têm ausentes. Além disso, 11,2% das notificações (28.097) ficam sem desfecho válido e não entram na Tabela 1. Isso implica cautela ao interpretar escolaridade e parceiro tratado, pois quase 1 em cada 3 notificações não tem essa informação. E o ignorado não parece aleatório: é mais frequente entre os óbitos (36,1% contra 28,1% na escolaridade; 33,1% contra 26,1% no parceiro tratado), o que pode refletir pior qualidade do preenchimento nos casos mais graves.
+
+(i) Descartar os casos com qualquer variável ignorada eliminaria cerca de metade da amostra. 
+(ii) Como o ignorado não é aleatório, descartá-lo poderia distorcer as comparações entre os grupos; mantê-lo como categoria preserva todos os casos e deixa o problema visível ao leitor. 
+(iii) Imputar valores (por exemplo, pela categoria mais frequente) criaria informação que não existe, e seria pouco confiável com quase 30% de ignorados. 
+(iv) Como as análises são descritivas, basta apresentar "Ignorado/ausente" explicitamente e discutir essa limitação.
+:::
+
+# Etapa 3 — Visualização e interpretação dos dados
+
+::: {.passo}
+Cinco gráficos de tipos diferentes: **barras, histograma, linhas, boxplot e mapa de calor**. As cores seguem a paleta de Okabe-Ito (azul `#0072B2` e laranja-avermelhado `#D55E00`) e a escala `cividis`, seguras para daltonismo. Nenhuma informação depende só da cor, pois sempre há rótulos ou valores.
+:::
+
+```{r tema}
+cor_vivo  <- "#0072B2"
+cor_obito <- "#D55E00"
+cores_desfecho <- c("Vivo" = cor_vivo, "Óbito por sífilis congênita" = cor_obito)
+fonte <- "Fonte: SINAN, Ministério da Saúde. Elaboração própria."
+
+tema_rel <- theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"),
+        legend.position = "bottom",
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(colour = "grey30", hjust = 0))
+```
+
+## Figura 1 — Letalidade por região (barras)
+
+**Pergunta:** a proporção de óbitos entre os casos com desfecho conhecido é diferente entre as regiões?
+**Por que barras:** comparam valores (aqui, proporções) entre categorias nominais. O cálculo da letalidade por grupo é repetido várias vezes neste relatório; na Etapa 4 ele é transformado em uma função.
+
+```{r fig1, fig.cap="Figura 1 – Letalidade por sífilis congênita por região (óbitos entre casos com desfecho vivo ou óbito).", fig.alt="Gráfico de barras com a letalidade em cada região do Brasil."}
+tab_regiao <- dados |>
+  filter(!is.na(regiao), !is.na(obito)) |>
+  group_by(grupo = regiao) |>
+  summarise(n = n(), eventos = sum(obito), .groups = "drop") |>
+  mutate(pct = 100 * eventos / n)
+
+ggplot(tab_regiao, aes(x = grupo, y = pct)) +
+  geom_col(fill = cor_vivo, width = 0.65) +
+  geom_text(aes(label = paste0(fnum(pct, 1), "%")), vjust = -0.4, size = 3.8) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(x = NULL, y = "Letalidade (%)", caption = fonte) +
+  tema_rel
+```
+
+```{r pad1, include=FALSE}
+r_max <- tab_regiao[which.max(tab_regiao$pct), ]
+r_min <- tab_regiao[which.min(tab_regiao$pct), ]
+```
+
+**Padrões observados:** a letalidade variou de **`r fnum(r_min$pct, 1)`%** (`r as.character(r_min$grupo)`) a **`r fnum(r_max$pct, 1)`%** (`r as.character(r_max$grupo)`).
+
+::: {.interpretacao}
+A letalidade foi baixa e parecida em todas as regiões: ficou entre 1,4% (Sul) e 1,7% (Centro-Oeste), uma diferença de cerca de 0,3 ponto percentual, e todas as regiões ficaram próximas da letalidade geral (1,57%). Sul e Norte tiveram os menores valores; Sudeste, Nordeste e Centro-Oeste ficaram em torno da média ou um pouco acima. No contexto da saúde, isso sugere que, entre os casos notificados, o risco de óbito por sífilis congênita não varia muito de uma região para outra.
+:::
+
+## Figura 2 — Idade da mãe (histograma)
+
+**Pergunta:** como se distribui a idade das mães?
+**Por que histograma:** mostra a forma da distribuição de uma variável numérica (concentração, simetria, caudas).
+
+```{r fig2, fig.cap="Figura 2 – Distribuição da idade das mães (anos); a linha tracejada marca a mediana.", fig.alt="Histograma da idade das mães com linha vertical na mediana."}
+med_idade <- median(dados$idade_mae, na.rm = TRUE)
+
+ggplot(filter(dados, !is.na(idade_mae)), aes(x = idade_mae)) +
+  geom_histogram(binwidth = 1, fill = cor_vivo, colour = "white") +
+  geom_vline(xintercept = med_idade, linetype = "dashed", linewidth = 0.8) +
+  annotate("text", x = med_idade, y = Inf, vjust = 2, hjust = -0.1,
+           label = paste0("Mediana = ", fnum(med_idade, 0), " anos")) +
+  scale_y_continuous(labels = label_number(big.mark = ".")) +
+  labs(x = "Idade da mãe (anos)", y = "Número de notificações", caption = fonte) +
+  tema_rel
+```
+
+```{r pad2, include=FALSE}
+q_idade <- quantile(dados$idade_mae, c(0.25, 0.75), na.rm = TRUE)
+pct_adolesc <- 100 * mean(dados$idade_mae < 20, na.rm = TRUE)
+```
+
+**Padrões observados:** a idade mediana é **`r fnum(med_idade, 0)` anos** (metade das mães tem entre `r fnum(q_idade[1], 0)` e `r fnum(q_idade[2], 0)` anos); **`r fnum(pct_adolesc, 1)`%** das mães têm menos de 20 anos.
+
+::: {.interpretacao}
+A distribuição da idade é assimétrica, com cauda longa à direita (assimetria positiva): há um pico em torno dos 21 anos, a maior parte das mães está entre 18 e 28 anos e o número de casos cai de forma gradual nas idades mais altas, até cerca de 50 anos. Isso aparece na média (24,5 anos) ser maior que a mediana (23 anos), puxada pelas mães mais velhas. Mães com 35 anos ou mais são 8,2% e com 40 anos ou mais, 2,0%. Na outra ponta, 0,85% das mães (2.079) tinham de 10 a 14 anos, um grupo pequeno, mas que exige atenção específica de proteção e cuidado.
+
+Para o público-alvo do pré-natal, o resultado mostra que as mães de casos de sífilis congênita são majoritariamente jovens: 23,1% têm menos de 20 anos e cerca de 58% menos de 25. Isso indica que as ações de captação precoce para o pré-natal, de testagem e tratamento da gestante e do parceiro, e de orientação sobre prevenção de infecções sexualmente transmissíveis devem alcançar de forma prioritária adolescentes e mulheres jovens, nos serviços de saúde e nas escolas. Um cuidado de interpretação: este gráfico mostra a idade das mães dos casos notificados, e não de todas as gestantes.
+:::
+
+## Figura 3 — Tendência ao longo dos anos (linhas)
+
+**Pergunta:** como evoluíram o número de notificações e a letalidade entre 2013 e 2023?
+**Por que linhas:** são o gráfico adequado para mostrar a evolução de um indicador no tempo. Usamos dois painéis, pois as unidades (contagem e porcentagem) são diferentes.
+
+```{r fig3, fig.height=6.5, fig.cap="Figura 3 – Notificações por ano e letalidade entre os casos com desfecho vivo ou óbito.", fig.alt="Dois gráficos de linhas: notificações por ano e letalidade por ano."}
+por_ano <- dados |>
+  filter(!is.na(ano)) |>
+  group_by(ano) |>
+  summarise(notificacoes = n(),
+            letalidade = 100 * mean(obito, na.rm = TRUE), .groups = "drop")
+
+por_ano |>
+  pivot_longer(-ano, names_to = "indicador", values_to = "valor") |>
+  mutate(indicador = factor(indicador, levels = c("notificacoes", "letalidade"),
+                            labels = c("Notificações (n)", "Letalidade (%)"))) |>
+  ggplot(aes(x = ano, y = valor)) +
+  geom_line(colour = cor_vivo, linewidth = 1) +
+  geom_point(colour = cor_vivo, size = 2.2) +
+  facet_wrap(~ indicador, ncol = 1, scales = "free_y") +
+  scale_x_continuous(breaks = breaks_pretty(),
+                     labels = function(z) format(z, big.mark = "")) +
+  scale_y_continuous(labels = label_number(big.mark = ".", decimal.mark = ",")) +
+  labs(x = "Ano", y = NULL, caption = fonte) +
+  tema_rel
+```
+
+```{r pad3, include=FALSE}
+a_max <- por_ano[which.max(por_ano$notificacoes), ]
+a_prim <- por_ano[1, ]
+a_ult  <- por_ano[nrow(por_ano), ]
+```
+
+**Padrões observados:** o maior número de notificações foi em **`r a_max$ano`** (`r fmt_n(a_max$notificacoes)`). Entre `r a_prim$ano` e `r a_ult$ano`, as notificações passaram de `r fmt_n(a_prim$notificacoes)` para `r fmt_n(a_ult$notificacoes)`, e a letalidade foi de `r fnum(a_prim$letalidade, 1)`% para `r fnum(a_ult$letalidade, 1)`%.
+
+::: {.interpretacao}
+O número de notificações aumentou ao longo do período: de 14.111 em 2013 para 25.310 em 2023 (um aumento de cerca de 79%). O crescimento foi mais forte até 2018 (26.874 casos); depois houve uma queda em 2019 e 2020 (23.056, a menor desde 2016), um pico em 2021 (27.186, o maior da série) e uma leve queda em 2022 e 2023. A queda de 2020 coincide com a pandemia de COVID-19, que pode ter dificultado o acesso aos serviços e a notificação, mas a base não permite confirmar essa explicação.
+
+A letalidade diminuiu: foi de 1,87% em 2013, chegou a 2,12% em 2015, caiu para 1,60% em 2016 e atingiu o menor valor em 2020 (1,23%), voltando a ficar em torno de 1,4% de 2021 a 2023 (1,40% em 2023).
+:::
+
+## Figura 4 — Idade da mãe segundo o desfecho (boxplot)
+
+**Pergunta:** a idade das mães difere entre casos que sobreviveram e casos com óbito?
+**Por que boxplot:** compara a distribuição de uma variável numérica entre grupos, mostrando mediana, quartis e valores extremos. O losango branco é a média.
+
+```{r fig4, fig.cap="Figura 4 – Idade da mãe segundo o desfecho do caso.", fig.alt="Boxplots da idade da mãe para os grupos vivo e óbito por sífilis congênita."}
+dados |>
+  filter(!is.na(idade_mae), !is.na(desfecho)) |>
+  ggplot(aes(x = desfecho, y = idade_mae, fill = desfecho)) +
+  geom_boxplot(outlier.alpha = 0.15, width = 0.55) +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 3.2, fill = "white") +
+  scale_fill_manual(values = cores_desfecho, guide = "none") +
+  labs(x = NULL, y = "Idade da mãe (anos)", caption = fonte) +
+  tema_rel
+```
+
+```{r pad4, include=FALSE}
+med_g <- dados |>
+  filter(!is.na(idade_mae), !is.na(desfecho)) |>
+  group_by(desfecho) |>
+  summarise(mediana = median(idade_mae), .groups = "drop")
+```
+
+**Padrões observados:** a idade mediana das mães foi de **`r fnum(med_g$mediana[1], 0)` anos** entre os casos vivos e de **`r fnum(med_g$mediana[2], 0)` anos** entre os óbitos.
+
+::: {.interpretacao}
+A diferença de idade entre os grupos é pequena: a mediana foi de 23 anos entre os casos vivos e de 22 anos entre os óbitos, e a média, de 24,5 e 23,3 anos (cerca de 1 ano de diferença, ou aproximadamente um quinto do desvio-padrão, que é de 6,2 anos). Os quartis também se deslocam apenas 1 ano (20 a 28 anos entre os vivos; 19 a 27 entre os óbitos), e as caixas se sobrepõem quase por completo. Ou seja, as mães dos casos com óbito foram, em média, um pouco mais jovens, mas a idade sozinha distingue pouco os dois grupos.
+:::
+
+## Figura 5 — Letalidade por escolaridade e pré-natal (mapa de calor)
+
+**Pergunta:** como a letalidade varia na combinação entre escolaridade da mãe e pré-natal?
+**Por que mapa de calor:** mostra o padrão de uma medida em duas variáveis categóricas ao mesmo tempo. Células com menos de 30 casos aparecem em cinza e não devem ser interpretadas (proporções instáveis).
+
+```{r fig5, fig.height=6, fig.cap="Figura 5 – Letalidade (%) por escolaridade da mãe e realização de pré-natal.", fig.alt="Mapa de calor com a letalidade por combinação de escolaridade e pré-natal."}
+n_min_celula <- 30
+
+mapa_calor <- dados |>
+  filter(!is.na(escolaridade_mae), !is.na(prenatal), !is.na(obito)) |>
+  group_by(escolaridade_mae, prenatal) |>
+  summarise(n = n(), obitos = sum(obito), .groups = "drop") |>
+  mutate(pct = 100 * obitos / n,
+         pct_plot = ifelse(n < n_min_celula, NA, pct))
+
+corte_texto <- median(mapa_calor$pct_plot, na.rm = TRUE)
+
+ggplot(mapa_calor, aes(x = prenatal, y = escolaridade_mae, fill = pct_plot)) +
+  geom_tile(colour = "white", linewidth = 0.9) +
+  geom_text(aes(label = ifelse(is.na(pct_plot), paste0("n < ", n_min_celula),
+                               paste0(fnum(pct, 1), "%\n(n = ", fmt_n(n), ")")),
+                colour = ifelse(!is.na(pct_plot) & pct_plot < corte_texto,
+                                "branco", "preto")), size = 3.3) +
+  scale_colour_manual(values = c(branco = "white", preto = "black"), guide = "none") +
+  scale_fill_viridis_c(option = "cividis", na.value = "grey85", name = "Letalidade (%)") +
+  labs(x = "Pré-natal realizado", y = NULL, caption = fonte) +
+  tema_rel +
+  theme(legend.position = "right", panel.grid = element_blank())
+```
+
+```{r pad5, include=FALSE}
+cel_max <- mapa_calor |> filter(!is.na(pct_plot)) |> slice_max(pct_plot, n = 1)
+```
+
+**Padrões observados:** a maior letalidade entre as células com casos suficientes foi de **`r fnum(cel_max$pct, 1)`%** (escolaridade: `r as.character(cel_max$escolaridade_mae)`; pré-natal: `r as.character(cel_max$prenatal)`).
+
+::: {.interpretacao}
+Sim, a letalidade foi maior entre as mães sem pré-natal em todos os níveis de escolaridade. Sem pré-natal, a letalidade variou de 2,4% a 5,5% conforme a escolaridade; com pré-natal, de 0,9% a 2,0%. No conjunto das células do mapa, ela foi de 3,3% sem pré-natal e de 1,1% com pré-natal, ou seja, cerca de três vezes maior. A razão entre os dois valores variou de aproximadamente 2 vezes (analfabetas e fundamental até a 4ª série) a 6 vezes (ensino superior).
+:::
+
+# Etapa 4 — Desenvolvimento e aplicação de funções
+
+::: {.passo}
+Nas etapas anteriores repetimos cálculos parecidos (percentual de ausentes por variável; proporção de óbitos por grupo). Aqui transformamos esses cálculos em **duas funções próprias**, para organizar e reutilizar o código:
+
+- `resumo_ausentes()`: calcula a quantidade e a proporção de valores ausentes por variável.
+- `freq_por_grupo()`: calcula a proporção de um evento (0/1) em cada grupo.
+
+Depois de definidas, elas são **aplicadas ao dataset** nesta seção e **reutilizadas na Etapa 5**.
+:::
+
+## Código das funções
+
+```{r funcoes}
+# ---------------------------------------------------------------
+# resumo_ausentes(df)
+#   df      : data.frame ou tibble
+#   retorna : data.frame com variável, n válidos, n e % de ausentes
+#             (do maior para o menor % de ausentes)
+# ---------------------------------------------------------------
+resumo_ausentes <- function(df) {
+  data.frame(
+    variavel     = names(df),
+    n_validos    = sapply(df, function(x) sum(!is.na(x))),
+    n_ausentes   = sapply(df, function(x) sum(is.na(x))),
+    pct_ausentes = round(100 * sapply(df, function(x) mean(is.na(x))), 2),
+    row.names    = NULL
+  ) |>
+    arrange(desc(pct_ausentes))
+}
+
+# ---------------------------------------------------------------
+# freq_por_grupo(df, var_grupo, var_evento)
+#   df         : data.frame ou tibble
+#   var_grupo  : nome (texto) da variável que define os grupos
+#   var_evento : nome (texto) da variável binária 0/1 (1 = evento)
+#   retorna    : data.frame com grupo, n, eventos e pct (% de eventos)
+#                Linhas com grupo ou evento ausente são ignoradas.
+# ---------------------------------------------------------------
+freq_por_grupo <- function(df, var_grupo, var_evento) {
+  df |>
+    filter(!is.na(.data[[var_grupo]]), !is.na(.data[[var_evento]])) |>
+    group_by(grupo = .data[[var_grupo]]) |>
+    summarise(n = n(), eventos = sum(.data[[var_evento]] == 1),
+              .groups = "drop") |>
+    mutate(pct = 100 * eventos / n)
+}
+```
+
+## Aplicação de `resumo_ausentes()`
+
+Com uma única chamada obtemos o mesmo resumo de ausentes que antes exigia várias linhas de código:
+
+```{r aplica-ausentes}
+tabela(resumo_ausentes(dados[, vars_interesse]),
+       "Aplicação de `resumo_ausentes()` às variáveis de interesse")
+```
+
+## Aplicação de `freq_por_grupo()`
+
+A mesma função calcula a letalidade para qualquer variável de agrupamento. Exemplo: letalidade por faixa etária da mãe.
+
+```{r aplica-freq}
+freq_por_grupo(dados, "faixa_etaria", "obito") |>
+  transmute(`Faixa etária` = grupo, Casos = fmt_n(n),
+            Óbitos = fmt_n(eventos), `Letalidade (%)` = fnum(pct, 2)) |>
+  tabela("Aplicação de `freq_por_grupo()`: letalidade por faixa etária da mãe")
+```
+
+
+# Etapa 5 — Análises para investigar o tema
+
+## Análise 1 — O pré-natal entre os casos notificados mudou de 2013 a 2023?
+
+**(a) Pergunta:** a proporção de mães com pré-natal realizado, entre as notificações com essa informação, aumentou, diminuiu ou ficou estável ao longo dos anos?
+
+**(b) Relevância:** o pré-natal é a principal oportunidade de diagnosticar e tratar a sífilis na gestante e evitar a transmissão ao bebê. Acompanhar sua proporção ao longo do tempo mostra se o acesso ao cuidado entre as mães dos casos notificados está mudando.
+
+::: {.passo}
+**Método:** para cada ano, calculamos a proporção de mães com pré-natal (função `freq_por_grupo()`), excluindo as notificações com pré-natal ignorado, e comparamos o primeiro e o último ano em **pontos percentuais**.
+:::
+
+```{r analise1}
+tab_pn <- freq_por_grupo(dados, "ano", "prenatal_bin")
+
+tab_pn |>
+  transmute(Ano = grupo, `Notificações com informação` = fmt_n(n),
+            `Com pré-natal` = fmt_n(eventos), `Proporção (%)` = fnum(pct, 1)) |>
+  tabela("Proporção de mães com pré-natal realizado, por ano")
+```
+
+```{r fig-analise1, fig.cap="Figura 6 – Proporção de mães com pré-natal realizado, por ano de notificação.", fig.alt="Gráfico de linha com a proporção anual de mães com pré-natal."}
+ggplot(tab_pn, aes(x = grupo, y = pct)) +
+  geom_line(colour = cor_vivo, linewidth = 1) +
+  geom_point(colour = cor_vivo, size = 2.4) +
+  geom_text(aes(label = fnum(pct, 1)), vjust = -1, size = 3.2) +
+  scale_x_continuous(breaks = breaks_pretty(),
+                     labels = function(z) format(z, big.mark = "")) +
+  scale_y_continuous(limits = c(0, 100)) +
+  labs(x = "Ano", y = "Mães com pré-natal (%)", caption = fonte) +
+  tema_rel
+```
+
+```{r pad-a1, include=FALSE}
+p1 <- tab_pn$pct[1]
+p2 <- tab_pn$pct[nrow(tab_pn)]
+ano1 <- tab_pn$grupo[1]
+ano2 <- tab_pn$grupo[nrow(tab_pn)]
+pico <- tab_pn[which.max(tab_pn$pct), ]
+```
+
+**Resultado:** a proporção de mães com pré-natal foi de **`r fnum(p1, 1)`%** em `r ano1` e de **`r fnum(p2, 1)`%** em `r ano2`, uma variação de **`r fnum(p2 - p1, 1)` pontos percentuais**. O valor mais alto foi em `r pico$grupo` (`r fnum(pico$pct, 1)`%).
+
+::: {.interpretacao}
+**(c) Observações** 
+      (1) a base só tem **casos notificados**, então o resultado **não é a cobertura de pré-natal da população**;       (2) ter feito pré-natal e ainda assim ter um caso de sífilis congênita sugere falhas no diagnóstico ou no tratamento durante o pré-natal; 
+      (3) mudanças no preenchimento da ficha ao longo dos anos podem influenciar a proporção.
+:::
+
+## Análise 2 — A letalidade difere entre grupos?
+
+**(a) Pergunta:** entre os casos com desfecho vivo ou óbito, a letalidade é diferente conforme o pré-natal, o tratamento do parceiro, a escolaridade, a raça/cor, a faixa etária da mãe e a região?
+
+**(b) Relevância:** comparar a letalidade entre grupos aponta onde o desfecho é pior e, portanto, onde as ações de saúde pública podem ser mais necessárias (falhas na cascata de cuidado e desigualdades).
+
+::: {.passo}
+**Método:** usamos `freq_por_grupo()` para calcular, em cada grupo, o número de casos, de óbitos e a **letalidade (%)**. Comparamos cada grupo com a **letalidade geral** pela razão `letalidade do grupo / letalidade geral` (acima de 1 = pior que a média). Os ignorados são mantidos como categoria própria. É uma comparação **descritiva e bruta**, sem ajuste e sem teste estatístico.
+:::
+
+```{r analise2}
+preditores <- c(prenatal = "Pré-natal realizado", trat_parceiro = "Parceiro tratado",
+                escolaridade_mae = "Escolaridade da mãe", raca_mae = "Raça/cor da mãe",
+                faixa_etaria = "Faixa etária da mãe", regiao = "Região")
+
+let_geral <- 100 * mean(dados$obito, na.rm = TRUE)
+
+comp <- bind_rows(lapply(names(preditores), function(v) {
+  freq_por_grupo(dados_cat, v, "obito") |>
+    mutate(variavel = preditores[[v]], categoria = as.character(grupo),
+           razao = pct / let_geral)
+}))
+
+comp |>
+  transmute(Variável = variavel, Categoria = categoria, Casos = fmt_n(n),
+            Óbitos = fmt_n(eventos), `Letalidade (%)` = fnum(pct, 2),
+            `Razão à letalidade geral` = fnum(razao, 2)) |>
+  tabela(paste0("Letalidade por grupo (letalidade geral = ", fnum(let_geral, 2), "%)"))
+```
+
+```{r fig-analise2, fig.height=8, fig.cap="Figura 7 – Letalidade por grupo; a linha tracejada marca a letalidade geral.", fig.alt="Gráfico de barras horizontais com a letalidade por categoria de cada variável e uma linha vertical na letalidade geral."}
+comp |>
+  mutate(variavel = factor(variavel, levels = unname(preditores))) |>
+  ggplot(aes(x = pct, y = categoria)) +
+  geom_col(fill = cor_obito, width = 0.7) +
+  geom_vline(xintercept = let_geral, linetype = "dashed") +
+  geom_text(aes(label = paste0(fnum(pct, 1), "%")), hjust = -0.15, size = 3) +
+  facet_wrap(~ variavel, scales = "free_y", ncol = 2) +
+  scale_y_discrete(limits = rev) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.2))) +
+  labs(x = "Letalidade (%)", y = NULL, caption = fonte) +
+  tema_rel
+```
+
+Para ver a combinação dos dois principais fatores de cuidado:
+
+```{r analise2-combinacao}
+dados_cat |>
+  filter(!is.na(obito)) |>
+  group_by(`Pré-natal` = prenatal, `Parceiro tratado` = trat_parceiro) |>
+  summarise(Casos = n(), Óbitos = sum(obito), .groups = "drop") |>
+  mutate(`Letalidade (%)` = fnum(100 * Óbitos / Casos, 2),
+         Casos = fmt_n(Casos), Óbitos = fmt_n(Óbitos)) |>
+  tabela("Letalidade segundo pré-natal e tratamento do parceiro")
+```
+
+```{r pad-a2, include=FALSE}
+g_max <- comp |> filter(n >= 100) |> slice_max(pct, n = 1)
+g_min <- comp |> filter(n >= 100) |> slice_min(pct, n = 1)
+```
+
+**Resultado:** a letalidade geral foi de **`r fnum(let_geral, 2)`%**. Entre os grupos com pelo menos 100 casos, a maior letalidade foi em **`r g_max$variavel`: `r g_max$categoria`** (`r fnum(g_max$pct, 2)`%, razão `r fnum(g_max$razao, 2)`) e a menor em **`r g_min$variavel`: `r g_min$categoria`** (`r fnum(g_min$pct, 2)`%, razão `r fnum(g_min$razao, 2)`).
+
+::: {.interpretacao}
+**(c) Observações** 
+    (1) **associação não é causalidade**: um grupo com letalidade maior não significa que a característica cause o óbito (outras variáveis, como a gravidade clínica, não estão na base); 
+    (2) as comparações são **brutas**, sem ajuste; 
+    (3) a categoria "Ignorado/ausente" pode ter letalidade diferente por motivos de registro; 
+    (4) grupos pequenos oscilam mais.
+:::
+
+# Limitações
+
+- **Dados de notificação:** há subnotificação e viés de seleção; a base não permite estimar incidência nem a cobertura de pré-natal da população.
+- **Ignorados:** escolaridade da mãe (`r fnum(aus_depois$pct_ausentes[aus_depois$variavel == "escolaridade_mae"], 1)`%) e tratamento do parceiro (`r fnum(aus_depois$pct_ausentes[aus_depois$variavel == "trat_parceiro"], 1)`%) têm muitos ignorados, o que limita a leitura dessas variáveis.
+- **Desfecho:** aborto, natimorto, óbito por outra causa e ignorado foram excluídos da análise do desfecho.
+- **Sem ajuste e sem testes:** as análises são descritivas; as diferenças observadas não foram testadas nem ajustadas por outras variáveis.
+- **Mudanças ao longo do tempo:** critérios de definição de caso e qualidade do preenchimento podem ter mudado entre 2013 e 2023.
+- **Variáveis não disponíveis:** gravidade clínica, idade gestacional e tipo de tratamento não foram analisados.
+
+
+# Conclusões
+
+::: {.interpretacao}
+Pré-natal: Entre 2013 e 2023, a proporção de mães com pré-natal realizado entre os casos notificados aumentou de 80,2% para 86,4%, uma variação de 6,3 pontos percentuais, atingindo o máximo de 87,7% em 2021. Esse resultado se refere aos casos notificados, não à cobertura de pré-natal na população.
+
+Letalidade: A letalidade foi maior entre os casos cujas mães não realizaram pré-natal (3,60%), tinham menos de 20 anos (2,11%) ou eram indígenas (1,95%). Também foi elevada entre os registros de pré-natal e escolaridade ignorados/ausentes, evidenciando a importância das limitações de informação.
+
+Implicações para a saúde pública e estudos futuros: Os achados reforçam a importância de ampliar o acesso e a qualidade do pré-natal, fortalecer o diagnóstico e o tratamento oportunos da sífilis e do parceiro, e qualificar o registro das notificações. Estudos futuros poderiam investigar fatores associados à letalidade com análises ajustadas, considerando desigualdades sociais, acesso aos serviços e possíveis mudanças na notificação ao longo do período.
+:::
+
+# Reprodutibilidade
+
+**Como executar:** 
+     (1) deixe `dados_sifilis_selecionados.csv` na mesma pasta deste `.Rmd` (ou para recriá-lo a partir dos `.dbc`, rode `00_baixar_e_preparar_dados.R`); 
+     (2) instale os pacotes listados na seção 3.1; 
+     (3) abra o `.Rmd` no RStudio e clique em *Knit*. Requer **R 4.1 ou mais recente**. O arquivo de dados do repositório tem só 8 colunas, sem datas nem município.
+
+**Repositório GitHub:** https://github.com/nataliateixeira-stats/analise_exploratoria_sifilis_congenita_brasil
+
+```{r sessao}
+sessionInfo()
+```
+
+# Referências
+
+::: {.interpretacao}
+Liste no formato ABNT: o sistema de origem dos dados (por exemplo: BRASIL. Ministério da Saúde. DATASUS. *SINAN – Sífilis congênita – Brasil*. Disponível em: http://tabnet.datasus.gov.br/cgi/tabcgi.exe?sinannet/cnv/sifilisbr.def. Acesso em: [data]), o dicionário de dados da ficha de sífilis congênita, 1 a 3 publicações sobre sífilis congênita no Brasil e os pacotes de R usados (`citation("ggplot2")`, `citation("dplyr")`, `citation("table1")`). Paleta de cores: Okabe, M.; Ito, K. *Color Universal Design (CUD)*, 2008.
+:::
