@@ -1,7 +1,7 @@
 ---
 title: "Sífilis congênita: perfil das notificações, tendência do pré-natal e letalidade"
 subtitle: "Projeto final — Programação e Análise de Dados (Prof. Lucas Miguel de Carvalho)"
-author: "Natália Teixei"
+author: "Natália Teixeira"
 date: "`r format(Sys.Date(), '%d/%m/%Y')`"
 lang: pt-BR
 output:
