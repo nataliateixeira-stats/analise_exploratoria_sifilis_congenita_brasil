@@ -873,6 +873,9 @@ sessionInfo()
 
 # Referências
 
-::: {.interpretacao}
-Liste no formato ABNT: o sistema de origem dos dados (por exemplo: BRASIL. Ministério da Saúde. DATASUS. *SINAN – Sífilis congênita – Brasil*. Disponível em: http://tabnet.datasus.gov.br/cgi/tabcgi.exe?sinannet/cnv/sifilisbr.def. Acesso em: [data]), o dicionário de dados da ficha de sífilis congênita, 1 a 3 publicações sobre sífilis congênita no Brasil e os pacotes de R usados (`citation("ggplot2")`, `citation("dplyr")`, `citation("table1")`). Paleta de cores: Okabe, M.; Ito, K. *Color Universal Design (CUD)*, 2008.
-:::
+
+BRASIL. Ministério da Saúde. DATASUS. *SINAN – Sífilis congênita – Brasil*. 
+Disponível em: http://tabnet.datasus.gov.br/cgi/tabcgi.exe?sinannet/cnv/sifilisbr.def. 
+
+
+
