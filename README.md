@@ -51,4 +51,10 @@ Para usar outra base, ajuste os objetos `arquivo` e `mapa` no início do relató
 
 ## Resultados principais
 
-[Resumir em 2 a 3 frases os achados da Análise 1 e da Análise 2, depois de rodar o relatório.]
+Pré-natal: Entre 2013 e 2023, a proporção de mães com pré-natal realizado entre os casos notificados aumentou de 80,2% para 86,4%, uma variação de 6,3 pontos percentuais, atingindo o máximo de 87,7% em 2021. Esse resultado se refere aos casos notificados, não à cobertura de pré-natal na população.
+
+Letalidade: A letalidade foi maior entre os casos cujas mães não realizaram pré-natal (3,60%), tinham menos de 20 anos (2,11%) ou eram indígenas (1,95%). Também foi elevada entre os registros de pré-natal e escolaridade ignorados/ausentes, evidenciando a importância das limitações de informação.
+
+Implicações para a saúde pública e estudos futuros: Os achados reforçam a importância de ampliar o acesso e a qualidade do pré-natal, fortalecer o diagnóstico e o tratamento oportunos da sífilis e do parceiro, e qualificar o registro das notificações. Estudos futuros poderiam investigar fatores associados à letalidade com análises ajustadas, considerando desigualdades sociais, acesso aos serviços e possíveis mudanças na notificação ao longo do período.
+
+Relatório completo em html no link: https://rpubs.com/StatCode/sc
